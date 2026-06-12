@@ -20,47 +20,55 @@ if ($existing) {
     exit 0
 }
 
-# 2) 설치 방법 자동 선택 (winget 우선, 없으면 curl)
+# 2) 설치 방법 순서 정하기 (winget 우선 -> 실패하면 검증된 curl 로 자동 폴백)
+$methods = @()
 if (Test-CommandExists 'winget') {
-    Write-Host 'winget(Windows 패키지 관리자)을 찾았습니다. 이 방법으로 설치합니다.'
+    Write-Host 'winget(Windows 패키지 관리자)을 찾았습니다. 먼저 winget 으로 시도합니다.'
     Write-Host '설치 중 Windows 권한 창이 한 번 뜰 수 있습니다(정상입니다).'
-    $method = 'winget'
-} else {
-    Write-Host 'winget 이 없어 구글 공식 설치 스크립트(curl)로 설치합니다(관리자 권한 불필요).'
-    $method = 'curl'
+    $methods += 'winget'
 }
+$methods += 'curl'   # winget 이 없거나 실패하면 -> 구글 공식 curl 스크립트(관리자 권한 불필요)
+
 Write-Host ''
 Write-Host '다운로드와 설치에 1~2분 정도 걸릴 수 있어요.'
 Write-Host '진행 중에는 이 창을 닫지 말고 잠시 기다려 주세요.'
 Write-Host ''
 
-# 3) 설치 실행 (최대 2회 시도)
-for ($try = 1; $try -le 2; $try++) {
-    Write-Host ("설치 시도 {0}/2 ..." -f $try)
+# 3) 방법을 순서대로 시도. 'android' 가 생기면 즉시 멈춤. (winget 실패 시 curl 폴백)
+$usedMethod = $null
+foreach ($m in $methods) {
+    Write-Host ('설치 시도: ' + $m + ' ...')
     try {
-        if ($method -eq 'winget') {
+        if ($m -eq 'winget') {
             & winget install --id Google.AndroidCLI -e --accept-source-agreements --accept-package-agreements
         } else {
-            # 구글이 안내하는 Windows 공식 한 줄 명령을 '진짜 cmd' 에서 실행합니다.
-            # (PowerShell 직접 다운로드는 미지원이므로 cmd /c 로 감쌉니다.)
+            # 구글 공식 Windows 한 줄 명령을 '진짜 cmd' 에서 실행 (PowerShell 직접 다운로드 미지원이라 cmd /c)
+            Write-Host '구글 공식 설치 스크립트(curl)로 설치합니다.'
             & cmd /c 'curl.exe -fsSL https://dl.google.com/android/cli/latest/windows_x86_64/install.cmd -o "%TEMP%\aclisetup.cmd" && "%TEMP%\aclisetup.cmd"'
         }
     } catch {
-        Write-Host ("  오류: " + $_.Exception.Message) -ForegroundColor Yellow
+        Write-Host ('  오류: ' + $_.Exception.Message) -ForegroundColor Yellow
     }
-    Start-Sleep -Seconds 2
-    if (Find-AndroidCli) { break }
-    if ($try -lt 2) { Write-Host '  잠시 후 다시 시도합니다...'; Start-Sleep -Seconds 3 }
+    Start-Sleep -Seconds 3
+    if (Find-AndroidCli) { $usedMethod = $m; break }
+    if ($m -ne $methods[-1]) {
+        Write-Host ('  ' + $m + ' 로 안 되어 다른 방법(curl)으로 다시 시도합니다...') -ForegroundColor Yellow
+        Start-Sleep -Seconds 2
+    }
 }
 
 # 4) 결과 확인 + 기록
 Write-Host ''
 $found = Find-AndroidCli
 if ($found) {
-    Write-MarkerMethod $method
+    # 실제로 성공한 방법을 기록 (제거 시 올바른 경로로 분기하기 위함)
+    Write-MarkerMethod $usedMethod
     Write-MarkerPath (Split-Path -Parent $found)
     Write-Host '설치 완료!' -ForegroundColor Green
     Write-Host "  위치: $found"
+    if ($usedMethod -ne $methods[0]) {
+        Write-Host ('  (참고: ' + $methods[0] + ' 가 안 되어 ' + $usedMethod + ' 로 설치했습니다.)')
+    }
     Write-Host ''
     Write-Host '[중요] Windows 에서는 에뮬레이터(가상기기) 명령이 현재 비활성입니다.'
     Write-Host '       프로젝트 생성 / SDK 관리 / 스킬 추가 / 문서 검색 등은 사용할 수 있습니다.'
@@ -68,7 +76,7 @@ if ($found) {
     Write-Host '다음 단계: RUN.bat 을 더블클릭해 메뉴를 여세요.'
     $code = 0
 } else {
-    Write-MarkerMethod $method
+    Write-MarkerMethod $methods[-1]
     Write-Host '설치 여부를 이 창에서 확인하지 못했습니다.' -ForegroundColor Yellow
     Write-Host ''
     Write-Host '먼저: 이 창을 닫고 RUN.bat 을 새로 실행해 1) 상태 확인 을 눌러보세요.'

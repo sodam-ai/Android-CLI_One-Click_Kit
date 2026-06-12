@@ -8,6 +8,13 @@ desktop.ini
 # Local dev scratch (not part of the published kit)
 .Android-CLI_One-URL.md
 
+# Tooling / agent artifacts (not part of the kit)
+.omc/
+.complexity-log.md
+.todos-report.md/
+.remember/
+.browser-pilot/
+
 # This kit ships no secrets and builds nothing.
 # Runtime data lives OUTSIDE the repo:
 #   %LOCALAPPDATA%\android-cli-one-click-kit\  (install marker, PATH backup)
